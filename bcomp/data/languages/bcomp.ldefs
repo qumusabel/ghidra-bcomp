@@ -1,0 +1,15 @@
+<!-- vim: ft=xml: 
+-->
+<language_definitions>
+    <language processor="Basic Computer"
+        endian="big"
+        size="16"
+        variant="default"
+        version="2019"
+        slafile="bcomp.sla"
+        processorspec="bcomp.pspec"
+        id="BComp:BE:16:default">
+        <description>Basic Computer</description>
+        <compiler name="default" spec="bcomp.cspec" id="default"/>
+    </language>
+</language_definitions>

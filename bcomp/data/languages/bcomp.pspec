@@ -1,0 +1,5 @@
+<!-- vim: ft=xml:
+-->
+<processor_spec>
+    <programcounter register="IP"/>
+</processor_spec>

@@ -1,0 +1,300 @@
+define endian=big;
+define alignment=2;
+
+define space ram type=ram_space size=2 wordsize=2 default;
+define space register type=register_space size=1;
+
+define register offset=0 size=2 [ AC ];
+define register offset=0x10 size=2 [ IP SP ];
+define register offset=0x20 size=2 [ PS ];
+# define bitrange N=PS[3,1]
+#                 Z=PS[2,1]
+#                 V=PS[1,1]
+#                 C=PS[0,1];
+
+@define N_flag "PS[3,1]"  
+@define Z_flag "PS[2,1]"  
+@define V_flag "PS[1,1]"  
+@define C_flag "PS[0,1]"  
+
+define pcodeop io_di;
+define pcodeop io_ei;
+define pcodeop io_in;
+define pcodeop io_out;
+define pcodeop io_int;
+
+macro resultFlags(value) {
+    $(Z_flag) = (value == 0);
+    $(N_flag) = (value s< 0);
+}
+
+define token instr(16)
+    opcode=(12,15)
+    opcode_ext_na=(0,11)
+    opcode_ext_br=(8,11)
+
+    io_ord=(8,11)
+    io_dev=(0,7)
+
+    adr_is_rel=(11,11)
+    adr_mode=(8,11)
+    adr_abs=(0,11)
+    
+    op_arg=(0, 7) signed
+;
+
+
+# TODO: implement P-code
+
+:NOP is opcode=0x0 & opcode_ext_na=0x000 { }
+:HLT is opcode=0x0 & opcode_ext_na=0x100 { goto 0x800; }
+:CLA is opcode=0x0 & opcode_ext_na=0x200 { 
+    AC = 0; 
+    $(V_flag) = 0;
+    resultFlags(AC);
+}
+:NOT is opcode=0x0 & opcode_ext_na=0x280 { 
+    AC = ~AC;
+    $(V_flag) = 0;
+    resultFlags(AC);
+}
+:CLC is opcode=0x0 & opcode_ext_na=0x300 { 
+    $(C_flag) = 0;
+    resultFlags(AC);
+}
+:CMC is opcode=0x0 & opcode_ext_na=0x380 { 
+    $(C_flag) = ~$(C_flag);
+}
+:ROL is opcode=0x0 & opcode_ext_na=0x400 { 
+    local tmpC:2 = zext($(C_flag));
+    $(C_flag) = (AC >> 15) != 0;
+    local result:2 = AC << 1;
+    result = result | tmpC;
+    AC = result;
+    resultFlags(AC);
+}
+:ROR is opcode=0x0 & opcode_ext_na=0x480 {
+    local tmpC:2 = zext($(C_flag));
+    tmpC = tmpC << 15;
+    $(C_flag) = (AC & 1) != 0;
+    local result:2 = AC >> 1;
+    result = result | tmpC;
+    AC = result;
+    resultFlags(AC);
+}
+:ASL is opcode=0x0 & opcode_ext_na=0x500 {
+    local tmp:2 = AC;
+    $(C_flag) = (tmp >> 15) != 0;
+    tmp = tmp << 1;
+    AC = tmp;
+    resultFlags(AC);
+}
+:ASR is opcode=0x0 & opcode_ext_na=0x580 { 
+    local tmp:2 = AC;
+    $(C_flag) = (tmp & 1) != 0;
+    tmp = tmp >> 1;
+    AC = tmp;
+    resultFlags(AC);
+}
+:SXTB is opcode=0x0 & opcode_ext_na=0x600 { 
+    AC = sext(AC:1);
+    resultFlags(AC);
+}
+:SWAB is opcode=0x0 & opcode_ext_na=0x680 { 
+    local tmp:1 = AC[8,8];
+    AC[8,8] = AC[0,8];
+    AC[0,8] = tmp;
+
+    $(V_flag) = 0;
+    resultFlags(AC);
+}
+:INC is opcode=0x0 & opcode_ext_na=0x700 { 
+    $(C_flag) = carry(AC, 1);
+    $(V_flag) = carry(AC, 1);
+    local tmp = AC + 1;
+    AC = tmp;
+    resultFlags(AC);
+}
+:DEC is opcode=0x0 & opcode_ext_na=0x740 { 
+    $(C_flag) = carry(AC, 0xFFFF);
+    $(V_flag) = scarry(AC, 0xFFFF);
+    local tmp = AC - 1;
+    AC = tmp;
+    resultFlags(AC);
+}
+:NEG is opcode=0x0 & opcode_ext_na=0x780 { 
+    $(C_flag) = carry(~AC, 1);
+    $(V_flag) = scarry(~AC, 1);
+    local tmp = -AC;
+    AC = tmp;
+    resultFlags(AC);
+}
+:POP is opcode=0x0 & opcode_ext_na=0x800 { 
+    AC = *:2 SP;
+    SP = SP + 1;
+    $(V_flag) = 0;
+    resultFlags(AC);
+}
+:POPF is opcode=0x0 & opcode_ext_na=0x900 { 
+    PS = *:2 SP;
+    SP = SP + 1;
+}
+:RET is opcode=0x0 & opcode_ext_na=0xA00 { 
+    local addr:2 = *:2 SP;
+    SP = SP + 1;
+    IP = addr;
+    return [addr];
+}
+:IRET is opcode=0x0 & opcode_ext_na=0xB00 { 
+    PS = *:2 SP;
+    SP = SP + 1;
+    local addr:2 = *:2 SP;
+    SP = SP + 1;
+    IP = addr;
+    return [addr];
+}
+:PUSH is opcode=0x0 & opcode_ext_na=0xC00 { 
+    SP = SP - 1;
+    *:2 SP = AC;
+}
+:PUSHF is opcode=0x0 & opcode_ext_na=0xD00 { 
+    SP = SP - 1;
+    *:2 SP = PS;
+}
+:SWAP is opcode=0x0 & opcode_ext_na=0xE00 { 
+    local tmp:2 = *:2 SP;
+    *:2 SP = AC;
+    AC = tmp;
+    
+    $(V_flag) = 0;
+    resultFlags(AC);
+}
+
+define pcodeop io;
+
+:DI io_dev is opcode=0x1 & io_ord=0x0 & io_ord & io_dev { io_di(); }
+:EI io_dev is opcode=0x1 & io_ord=0x1 & io_ord & io_dev { io_ei(); }
+:IN io_dev is opcode=0x1 & io_ord=0x2 & io_ord & io_dev { AC[0,8] = io_in(io_dev:1); }
+:OUT io_dev is opcode=0x1 & io_ord=0x3 & io_ord & io_dev { io_out(io_dev:1, AC[0,8]); }
+:INT io_dev is opcode=0x1 & io_ord=0x8 & io_ord & io_dev { io_int(io_dev:1); }
+
+op: "$"loc is adr_is_rel=0 & adr_abs [ loc=(adr_abs&0x7FF); ] {
+    export *:2 loc;
+}
+op: (reloc) is adr_mode=0b1000 & op_arg [ reloc=inst_next+op_arg; ] {
+    local tmp:2 = *:2 reloc:2;
+    export *:2 tmp;
+} 
+op: (reloc)+ is adr_mode=0b1010 & op_arg [ reloc=inst_next+op_arg; ] {
+    local tmp:2 = *:2 reloc:2;
+    *:2 reloc:2 = tmp+1;
+    export *:2 tmp;
+}
+op: -(reloc) is adr_mode=0b1011 & op_arg [ reloc=inst_next+op_arg; ] {
+    local tmp:2 = (*:2 reloc:2) - 1;
+    *:2 reloc:2 = tmp;
+    export *:2 tmp;
+}
+op: "&"op_arg is adr_mode=0b1100 & op_arg {
+    local tmp:2 = SP + op_arg;
+    export *:2 tmp;
+}
+op: reloc is adr_mode=0b1110 & op_arg [ reloc=inst_next+op_arg; ] { 
+    export *:2 reloc;
+}
+op: "#"op_arg is adr_mode=0b1111 & op_arg {
+    local tmp:2 = sext(op_arg:1);
+    export tmp;
+}
+
+:AND op is opcode=0x2 & op {
+    AC = AC & op;
+    $(V_flag) = 0;
+    resultFlags(AC);
+}
+:OR op is opcode=0x3 & op {
+    AC = AC | op;
+    $(V_flag) = 0;
+    resultFlags(AC);
+}
+:ADD op is opcode=0x4 & op {
+    $(C_flag) = carry(AC, op);
+    $(V_flag) = scarry(AC, op);
+    AC = AC + op;
+    resultFlags(AC);
+}
+:ADC op is opcode=0x5 & op {
+    local x:2 = zext($(C_flag)) + op;
+    $(C_flag) = carry(AC, x);
+    $(V_flag) = scarry(AC, x);
+
+    AC = AC + x;
+    resultFlags(AC);
+}
+:SUB op is opcode=0x6 & op {
+    local x = -op;
+    $(C_flag) = carry(AC, x);
+    $(V_flag) = scarry(AC, x);
+
+    AC = AC + x;
+    resultFlags(AC);
+}
+:CMP op is opcode=0x7 & op {
+    local x = -op;
+    $(C_flag) = carry(AC, x);
+    $(V_flag) = scarry(AC, x);
+    resultFlags(AC + x);
+}
+:LOOP op is opcode=0x8 & op {
+    op = op - 1;
+    if (op s<= 0) goto inst_next2;
+}
+
+:LD op is opcode=0xA & op {
+    AC = op;
+    $(V_flag) = 0;
+    resultFlags(AC);
+}
+:SWAM op is opcode=0xB & op {}
+:JUMP op is opcode=0xC & op {
+    goto op;
+}
+:CALL op is opcode=0xD & op {
+    call op;    
+}
+:ST op is opcode=0xE & op {
+    op = AC;
+}
+
+brdest: reloc is op_arg [ reloc=inst_next+op_arg; ] { export *:2 reloc; }
+
+:BEQ brdest is opcode=0xF & opcode_ext_br=0x0 & brdest {
+    if ($(Z_flag) == 1) goto brdest;
+}
+:BNE brdest is opcode=0xF & opcode_ext_br=0x1 & brdest {
+    if ($(Z_flag) == 0) goto brdest;
+}
+:BMI brdest is opcode=0xF & opcode_ext_br=0x2 & brdest {
+    if ($(N_flag) == 1) goto brdest;
+}
+:BPL brdest is opcode=0xF & opcode_ext_br=0x3 & brdest {
+    if ($(N_flag) == 0) goto brdest;
+}
+:BHIS brdest is opcode=0xF & opcode_ext_br=0x4 & brdest {
+    if ($(C_flag) == 1) goto brdest;
+}
+:BLO brdest is opcode=0xF & opcode_ext_br=0x5 & brdest {
+    if ($(C_flag) == 0) goto brdest;
+}
+:BVS brdest is opcode=0xF & opcode_ext_br=0x6 & brdest {
+    if ($(V_flag) == 1) goto brdest;
+}
+:BVC brdest is opcode=0xF & opcode_ext_br=0x7 & brdest {
+    if ($(V_flag) == 0) goto brdest;
+}
+:BLT brdest is opcode=0xF & opcode_ext_br=0x8 & brdest {
+    if ($(V_flag) != $(C_flag)) goto brdest;
+}
+:BGE brdest is opcode=0xF & opcode_ext_br=0x9 & brdest {
+    if ($(V_flag) == $(C_flag)) goto brdest;
+}
